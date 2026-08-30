@@ -1,0 +1,252 @@
+<meta charset="utf-8">
+<title>Slick Chick - playfield preview</title>
+<style>
+  body { margin: 0; background: #14110d; display: flex; gap: 24px; justify-content: center; padding: 24px;
+         font: 13px/1.4 ui-sans-serif, system-ui, sans-serif; color: #cbbfa8; }
+  figure { margin: 0; }
+  figcaption { text-align: center; padding-top: 8px; letter-spacing: .12em; text-transform: uppercase; font-size: 11px; }
+  canvas { border-radius: 18px; box-shadow: 0 18px 60px #0008; display: block; }
+</style>
+<figure><canvas id="art" width="1080" height="1920"></canvas><figcaption>as rendered</figcaption></figure>
+<figure><canvas id="phys" width="1080" height="1920"></canvas><figcaption>collision geometry</figcaption></figure>
+<script>
+// Preview renderer for the exported table. It deliberately mirrors the Android
+// renderer primitive for primitive: if a shape looks right here it will look
+// right on the phone, because both consume the same exported description.
+const T = window.TABLE;
+const HEADER = 250;                      // backbox strip, above the playfield
+const rgba = v => {
+  const a = ((v >>> 24) & 255) / 255, r = (v >>> 16) & 255, g = (v >>> 8) & 255, b = v & 255;
+  return `rgba(${r},${g},${b},${a})`;
+};
+// Playfield angles run counter-clockwise from +x in a y-down space; canvas
+// measures them the other way, hence the sign flip everywhere below.
+const rad = d => -d * Math.PI / 180;
+
+function roundRect(c, x, y, w, h, r) {
+  r = Math.min(r, Math.abs(w) / 2, Math.abs(h) / 2);
+  c.beginPath();
+  c.moveTo(x + r, y);
+  c.arcTo(x + w, y, x + w, y + h, r);
+  c.arcTo(x + w, y + h, x, y + h, r);
+  c.arcTo(x, y + h, x, y, r);
+  c.arcTo(x, y, x + w, y, r);
+  c.closePath();
+}
+
+function starPath(c, cx, cy, outer, inner, points, angleDeg) {
+  c.beginPath();
+  for (let i = 0; i < points * 2; i++) {
+    const r = i % 2 ? inner : outer;
+    const a = rad(angleDeg + (i * 180) / points);
+    const x = cx + r * Math.cos(a), y = cy + r * Math.sin(a);
+    i ? c.lineTo(x, y) : c.moveTo(x, y);
+  }
+  c.closePath();
+}
+
+function ringPath(c, cx, cy, r, t, from, to) {
+  c.beginPath();
+  c.arc(cx, cy, r + t / 2, rad(from), rad(to), true);
+  c.arc(cx, cy, r - t / 2, rad(to), rad(from), false);
+  c.closePath();
+}
+
+function drawArt(c, shapes) {
+  const order = ['BASE', 'DECOR', 'INSERT_HOLE', 'LINEWORK', 'PLASTIC', 'TRIM'];
+  for (const layer of order) {
+    for (const s of shapes) {
+      if (s.layer !== layer) continue;
+      c.save();
+      switch (s.type) {
+        case 'rect': {
+          let fill = rgba(s.fill);
+          if (s.fill2) {
+            const g = c.createLinearGradient(0, s.y, 0, s.y + s.h);
+            g.addColorStop(0, rgba(s.fill)); g.addColorStop(1, rgba(s.fill2)); fill = g;
+          }
+          roundRect(c, s.x, s.y, s.w, s.h, s.radius);
+          if (s.fill || s.fill2) { c.fillStyle = fill; c.fill(); }
+          if (s.sw) { c.strokeStyle = rgba(s.stroke); c.lineWidth = s.sw; c.stroke(); }
+          break;
+        }
+        case 'circle': {
+          c.beginPath(); c.arc(s.cx, s.cy, s.r, 0, 7);
+          if (s.fill) {
+            let fill = rgba(s.fill);
+            if (s.fill2) {
+              const g = c.createRadialGradient(s.cx - s.r * .3, s.cy - s.r * .3, s.r * .1, s.cx, s.cy, s.r);
+              g.addColorStop(0, rgba(s.fill)); g.addColorStop(1, rgba(s.fill2)); fill = g;
+            }
+            c.fillStyle = fill; c.fill();
+          }
+          if (s.sw) { c.strokeStyle = rgba(s.stroke); c.lineWidth = s.sw; c.stroke(); }
+          break;
+        }
+        case 'poly': {
+          c.beginPath();
+          s.points.forEach((p, i) => i ? c.lineTo(p[0], p[1]) : c.moveTo(p[0], p[1]));
+          if (s.closed) c.closePath();
+          if (s.fill) { c.fillStyle = rgba(s.fill); c.fill(); }
+          if (s.sw) { c.strokeStyle = rgba(s.stroke); c.lineWidth = s.sw; c.lineJoin = 'round'; c.stroke(); }
+          break;
+        }
+        case 'ring':
+          ringPath(c, s.cx, s.cy, s.r, s.t, s.from, s.to);
+          c.fillStyle = rgba(s.fill); c.fill();
+          break;
+        case 'star':
+          starPath(c, s.cx, s.cy, s.outer, s.inner, s.points, s.angle);
+          if (s.fill) { c.fillStyle = rgba(s.fill); c.fill(); }
+          if (s.sw) { c.strokeStyle = rgba(s.stroke); c.lineWidth = s.sw; c.stroke(); }
+          break;
+        case 'label': {
+          const weight = s.weight === 'BLACK' ? 900 : s.weight === 'BOLD' ? 700 : 400;
+          c.translate(s.x, s.y);
+          if (s.angle) c.rotate(rad(s.angle));
+          c.font = `${s.italic ? 'italic ' : ''}${weight} ${s.size}px "DejaVu Sans", system-ui, sans-serif`;
+          c.textAlign = s.align === 'LEFT' ? 'left' : s.align === 'RIGHT' ? 'right' : 'center';
+          c.fillStyle = rgba(s.colour);
+          if (s.tracking) {
+            const chars = [...s.text];
+            const widths = chars.map(ch => c.measureText(ch).width + s.tracking);
+            const total = widths.reduce((a, b) => a + b, 0) - s.tracking;
+            let x = c.textAlign === 'center' ? -total / 2 : 0;
+            c.textAlign = 'left';
+            chars.forEach((ch, i) => { c.fillText(ch, x, 0); x += widths[i]; });
+          } else {
+            c.fillText(s.text, 0, 0);
+          }
+          break;
+        }
+      }
+      c.restore();
+    }
+  }
+}
+
+function drawFurniture(c) {
+  // Ball guides and cabinet rails, drawn from the collision geometry so the
+  // player can read every lane the table actually has.
+  c.lineCap = 'round';
+  for (const w of T.walls) {
+    c.strokeStyle = '#8b8f98'; c.lineWidth = w.r * 2 + 3;
+    c.beginPath(); c.moveTo(w.a[0], w.a[1]); c.lineTo(w.b[0], w.b[1]); c.stroke();
+    c.strokeStyle = '#e6e9ef'; c.lineWidth = Math.max(2, w.r * 0.8);
+    c.beginPath(); c.moveTo(w.a[0], w.a[1]); c.lineTo(w.b[0], w.b[1]); c.stroke();
+  }
+  for (const a of T.arcs) {
+    c.strokeStyle = '#8b8f98'; c.lineWidth = a.t + 3;
+    c.beginPath(); c.arc(a.c[0], a.c[1], a.r, rad(a.from), rad(a.to), true); c.stroke();
+    c.strokeStyle = '#e6e9ef'; c.lineWidth = Math.max(2, a.t * 0.35);
+    c.beginPath(); c.arc(a.c[0], a.c[1], a.r, rad(a.from), rad(a.to), true); c.stroke();
+  }
+  for (const p of T.posts) {
+    c.fillStyle = '#d9c9a4'; c.beginPath(); c.arc(p.c[0], p.c[1], p.r, 0, 7); c.fill();
+    c.fillStyle = '#5b4a33'; c.beginPath(); c.arc(p.c[0], p.c[1], p.r * .45, 0, 7); c.fill();
+  }
+  // Lamps, unlit, as they sit in the playfield.
+  for (const l of T.lamps) {
+    c.save();
+    c.globalAlpha = 0.85;
+    c.fillStyle = rgba(l.colour);
+    if (l.shape === 'OVAL' && l.w) {
+      c.beginPath(); c.ellipse(l.c[0], l.c[1], l.w / 2, l.h / 2, 0, 0, 7); c.fill();
+    } else {
+      c.beginPath(); c.arc(l.c[0], l.c[1], l.r, 0, 7); c.fill();
+    }
+    c.restore();
+    if (l.label) {
+      c.fillStyle = 'rgba(30,24,16,.85)';
+      c.font = `700 ${Math.max(15, l.r * 0.85)}px "DejaVu Sans", sans-serif`;
+      c.textAlign = 'center';
+      c.fillText(l.label, l.c[0], l.c[1] + l.r * 0.32);
+    }
+  }
+  // The nine criss-cross bumpers. The five live ones get a mushroom cap; the
+  // four dead ones stay flat, so the player can see which is which.
+  for (const b of T.bumpers) {
+    if (b.pop) {
+      const g = c.createRadialGradient(b.c[0] - b.r * .35, b.c[1] - b.r * .4, b.r * .1, b.c[0], b.c[1], b.r);
+      g.addColorStop(0, '#fff4d8'); g.addColorStop(.5, '#e2503c'); g.addColorStop(1, '#8f2818');
+      c.beginPath(); c.arc(b.c[0], b.c[1], b.r, 0, 7); c.fillStyle = g; c.fill();
+      c.beginPath(); c.arc(b.c[0], b.c[1], b.r * .30, 0, 7); c.fillStyle = '#2a2118'; c.fill();
+      c.strokeStyle = '#ffe9bd'; c.lineWidth = 3;
+      c.beginPath(); c.arc(b.c[0], b.c[1], b.r * .62, 0, 7); c.stroke();
+    }
+    c.fillStyle = b.pop ? '#fff3d0' : '#2a2118';
+    c.font = `900 ${b.r * 0.62}px "DejaVu Sans", sans-serif`;
+    c.textAlign = 'center';
+    c.fillText(b.letter, b.c[0], b.c[1] + b.r * 0.22);
+  }
+  // The gobble hole.
+  c.beginPath(); c.arc(T.gobble.c[0], T.gobble.c[1], T.gobble.r, 0, 7);
+  c.fillStyle = '#050403'; c.fill();
+  // Flippers, at rest.
+  for (const f of T.flippers) {
+    const a = rad(f.rest);
+    const tip = [f.pivot[0] + Math.cos(a) * f.len, f.pivot[1] + Math.sin(a) * f.len];
+    c.strokeStyle = '#d8dbe2'; c.lineCap = 'round';
+    c.lineWidth = f.base * 2; c.beginPath(); c.moveTo(...f.pivot); c.lineTo((f.pivot[0] + tip[0]) / 2, (f.pivot[1] + tip[1]) / 2); c.stroke();
+    c.lineWidth = f.tip * 2; c.beginPath(); c.moveTo((f.pivot[0] + tip[0]) / 2, (f.pivot[1] + tip[1]) / 2); c.lineTo(...tip); c.stroke();
+    c.fillStyle = '#e2503c'; c.beginPath(); c.arc(f.pivot[0], f.pivot[1], f.base * .55, 0, 7); c.fill();
+  }
+  // Ball, sitting in the shooter lane.
+  const bg = c.createRadialGradient(T.plunger.laneX - 9, T.plunger.restY - 11, 3, T.plunger.laneX, T.plunger.restY, T.ballRadius);
+  bg.addColorStop(0, '#ffffff'); bg.addColorStop(.45, '#b9bec6'); bg.addColorStop(1, '#4b5058');
+  c.beginPath(); c.arc(T.plunger.laneX, T.plunger.restY, T.ballRadius, 0, 7); c.fillStyle = bg; c.fill();
+}
+
+function drawHeader(c) {
+  c.fillStyle = '#1a1410'; c.fillRect(0, 0, T.width, HEADER);
+  c.fillStyle = '#0d0a08'; c.fillRect(28, 34, 620, 120);
+  c.font = '900 92px "DejaVu Sans Mono", monospace'; c.textAlign = 'left'; c.fillStyle = '#ffb545';
+  c.fillText('047 350', 46, 128);
+  c.font = '700 22px "DejaVu Sans", sans-serif'; c.fillStyle = '#8a7d66';
+  c.fillText('SCORE', 46, 186);
+  c.fillText('BALL', 700, 60); c.fillText('BONUS', 700, 130); c.fillText('CREDITS', 700, 200);
+  c.font = '900 34px "DejaVu Sans Mono", monospace'; c.fillStyle = '#ffe6a8'; c.textAlign = 'right';
+  c.fillText('2', 1044, 60); c.fillText('7 x3', 1044, 130); c.fillText('1', 1044, 200);
+  c.strokeStyle = '#3a2f22'; c.lineWidth = 4; c.beginPath(); c.moveTo(0, HEADER - 2); c.lineTo(T.width, HEADER - 2); c.stroke();
+}
+
+function drawPhysics(c) {
+  c.fillStyle = '#0f1512'; c.fillRect(0, 0, T.width, T.height);
+  c.lineCap = 'round';
+  const line = (a, b, w, col) => { c.strokeStyle = col; c.lineWidth = w * 2; c.beginPath(); c.moveTo(a[0], a[1]); c.lineTo(b[0], b[1]); c.stroke(); };
+  for (const w of T.walls) line(w.a, w.b, w.r, '#4f6b62');
+  for (const a of T.arcs) {
+    c.strokeStyle = a.two ? '#7fd4b8' : '#3f9d84'; c.lineWidth = a.t;
+    c.beginPath(); c.arc(a.c[0], a.c[1], a.r, rad(a.from), rad(a.to), true); c.stroke();
+  }
+  for (const p of T.posts) { c.fillStyle = '#6d7f78'; c.beginPath(); c.arc(p.c[0], p.c[1], p.r, 0, 7); c.fill(); }
+  for (const b of T.bumpers) { c.strokeStyle = '#ff8a5c'; c.lineWidth = 5; c.beginPath(); c.arc(b.c[0], b.c[1], b.r, 0, 7); c.stroke(); }
+  for (const s of T.slings) line(s.a, s.b, 8, '#ffd166');
+  for (const t of T.targets) line(t.a, t.b, 7, '#f26d8b');
+  for (const r of T.rollovers) { c.strokeStyle = '#6ec6ff'; c.lineWidth = 3; c.setLineDash([10, 8]); c.beginPath(); c.arc(r.c[0], r.c[1], r.r, 0, 7); c.stroke(); c.setLineDash([]); }
+  for (const s of T.saucers) { c.fillStyle = '#12181f'; c.strokeStyle = '#9be7ff'; c.lineWidth = 4; c.beginPath(); c.arc(s.c[0], s.c[1], s.r, 0, 7); c.fill(); c.stroke(); }
+  c.fillStyle = '#2b0d0d'; c.strokeStyle = '#ff5a5a'; c.lineWidth = 5;
+  c.beginPath(); c.arc(T.gobble.c[0], T.gobble.c[1], T.gobble.r, 0, 7); c.fill(); c.stroke();
+  for (const f of T.flippers) {
+    for (const [ang, col] of [[f.rest, '#ffffff'], [f.active, '#ffffff55']]) {
+      const a = rad(ang);
+      c.strokeStyle = col; c.lineWidth = f.base * 2;
+      c.beginPath(); c.moveTo(f.pivot[0], f.pivot[1]);
+      c.lineTo(f.pivot[0] + Math.cos(a) * f.len, f.pivot[1] + Math.sin(a) * f.len); c.stroke();
+    }
+  }
+  c.fillStyle = '#ffffff';
+  c.beginPath(); c.arc(T.plunger.laneX, T.plunger.restY, T.ballRadius, 0, 7); c.fill();
+}
+
+const art = document.getElementById('art').getContext('2d');
+drawHeader(art);
+art.save(); art.translate(0, HEADER);
+drawArt(art, T.art); drawFurniture(art);
+art.restore();
+
+const phys = document.getElementById('phys').getContext('2d');
+phys.fillStyle = '#0f1512'; phys.fillRect(0, 0, T.width, 1920);
+phys.save(); phys.translate(0, HEADER); drawPhysics(phys); phys.restore();
+document.title = 'ready';
+</script>
