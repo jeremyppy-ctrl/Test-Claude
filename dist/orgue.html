@@ -250,7 +250,14 @@ footer a{color:var(--tin)}
    proviennent tous de l'analyse de l'enregistrement (voir analysis/).
    ═══════════════════════════════════════════════════════════════════ */
 
-const SANDBOXED = (function () { try { return window.self !== window.top; } catch (e) { return true; } })();
+/* Servie par claude.ai, la page n'a pas le droit de remettre un fichier au
+   lecteur — et « .mid » ne figure pas parmi les extensions que la plateforme
+   accepte. On y remplace donc l'export par l'endroit où trouver le fichier,
+   plutôt que d'afficher un bouton qui ne ferait rien. */
+const HOSTED = (function () {
+  try { return !!(window.claude && window.claude.use) || window.self !== window.top; }
+  catch (e) { return true; }
+})();
 const NOTE_NAMES = ["Do", "Do♯", "Ré", "Ré♯", "Mi", "Fa", "Fa♯", "Sol", "Sol♯", "La", "La♯", "Si"];
 const FAMILY_LABEL = {
   flute: "Flûtes", principal: "Principaux", mixture: "Fournitures",
@@ -786,7 +793,9 @@ const ui = {
           <p>Souris ou doigt sur les touches · rangées <b>QSDFGHJKLM</b> et <b>ZERTYUOP</b> du clavier
              d'ordinateur · <b>←</b>/<b>→</b> pour changer d'octave · <b>espace</b> pour lire ou arrêter</p>
           <button id="midiBtn" style="padding:5px 11px;font-size:12px">Clavier MIDI</button>
-          ${SANDBOXED ? "" : '<button id="dlMidi" style="padding:5px 11px;font-size:12px">Exporter le MIDI</button>'}
+          ${HOSTED
+            ? '<span style="color:var(--muted);font-size:12px">MIDI multipiste : <code>app/data/orgue.mid</code> dans le dépôt</span>'
+            : '<button id="dlMidi" style="padding:5px 11px;font-size:12px">Exporter le MIDI</button>'}
         </div>
         <div style="overflow-x:auto"><div class="keys" id="keys" style="min-width:640px"></div></div>
       </div>
@@ -949,7 +958,10 @@ const ui = {
     });
     document.getElementById("midiBtn").addEventListener("click", connectMidi);
     const dl = document.getElementById("dlMidi");
-    if (dl) dl.addEventListener("click", downloadMidi);
+    if (dl) dl.addEventListener("click", () => {
+      try { downloadMidi(); }
+      catch (e) { dl.textContent = "Export impossible ici"; dl.disabled = true; }
+    });
 
     document.addEventListener("keydown", ev => {
       if (ev.target.matches("input,textarea")) return;
