@@ -1,0 +1,1095 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Console de l'orgue relevé</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Marcellus&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* ─────────────────────────────────────────────────────────────
+   Jetons — thème clair complet ici ; les blocs sombres plus bas
+   ne redéfinissent que ces mêmes variables.
+   ───────────────────────────────────────────────────────────── */
+:root{
+  --ground:#E4E1D8;      /* pierre calcaire, légèrement verte */
+  --panel:#F2F0EA;
+  --panel-2:#E9E6DD;
+  --ink:#23252B;
+  --ink-soft:#4A4E57;
+  --muted:#6C707A;
+  --rule:#C9C4B7;
+  --rule-soft:#D8D4C9;
+  --brass:#8A6D10;       /* laiton assombri pour tenir sur fond pâle */
+  --brass-bright:#B8951F;
+  --tin:#4E6B85;
+  --shadow:0 1px 2px rgba(35,37,43,.10), 0 8px 24px rgba(35,37,43,.07);
+  --key-white:#FBFAF6;
+  --key-white-edge:#CFCABB;
+  --key-black:#2A2C33;
+  --roll-bg:#EDEAE1;
+  --roll-grid:#D9D5C9;
+  --roll-octave:#C6C0B0;
+  --f-flute:#3F6A8A;
+  --f-principal:#8A6D10;
+  --f-mixture:#6E7C1E;
+  --f-reed:#A5502A;
+  --f-cornet:#6F5580;
+  --f-nazard:#9A6418;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --ground:#13151A;
+    --panel:#1B1E25;
+    --panel-2:#22262F;
+    --ink:#E7E2D4;
+    --ink-soft:#BDBAB0;
+    --muted:#8A91A0;
+    --rule:#2E333D;
+    --rule-soft:#262A33;
+    --brass:#C9A227;
+    --brass-bright:#E0BC46;
+    --tin:#8AA3BB;
+    --shadow:0 1px 2px rgba(0,0,0,.5), 0 10px 30px rgba(0,0,0,.35);
+    --key-white:#DCD7C8;
+    --key-white-edge:#9A9585;
+    --key-black:#15171C;
+    --roll-bg:#171A20;
+    --roll-grid:#242830;
+    --roll-octave:#333947;
+    --f-flute:#7FA8C6;
+    --f-principal:#C9A227;
+    --f-mixture:#AFC152;
+    --f-reed:#D07C4C;
+    --f-cornet:#A992BC;
+    --f-nazard:#DFA24E;
+  }
+}
+:root[data-theme="dark"]{
+  --ground:#13151A; --panel:#1B1E25; --panel-2:#22262F; --ink:#E7E2D4;
+  --ink-soft:#BDBAB0; --muted:#8A91A0; --rule:#2E333D; --rule-soft:#262A33;
+  --brass:#C9A227; --brass-bright:#E0BC46; --tin:#8AA3BB;
+  --shadow:0 1px 2px rgba(0,0,0,.5), 0 10px 30px rgba(0,0,0,.35);
+  --key-white:#DCD7C8; --key-white-edge:#9A9585; --key-black:#15171C;
+  --roll-bg:#171A20; --roll-grid:#242830; --roll-octave:#333947;
+  --f-flute:#7FA8C6; --f-principal:#C9A227; --f-mixture:#AFC152;
+  --f-reed:#D07C4C; --f-cornet:#A992BC; --f-nazard:#DFA24E;
+}
+
+*{box-sizing:border-box}
+body{
+  margin:0; background:var(--ground); color:var(--ink);
+  font-family:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  font-size:14px; line-height:1.5; -webkit-font-smoothing:antialiased;
+}
+.wrap{max-width:1280px; margin:0 auto; padding:22px 20px 40px; display:flex; flex-direction:column; gap:18px}
+
+/* ── En-tête : la plaque gravée de l'instrument ───────────────── */
+header{display:flex; flex-wrap:wrap; align-items:flex-end; gap:20px 28px; justify-content:space-between}
+.title h1{
+  font-family:Marcellus,"Times New Roman",serif; font-weight:400;
+  font-size:clamp(26px,3.4vw,40px); line-height:1.05; margin:0; letter-spacing:.01em;
+  text-wrap:balance;
+}
+.title p{margin:6px 0 0; color:var(--muted); max-width:56ch}
+.plaque{
+  display:grid; grid-template-columns:repeat(auto-fit,minmax(88px,1fr)); gap:0;
+  border:1px solid var(--rule); border-radius:3px; background:var(--panel);
+  overflow:hidden; box-shadow:var(--shadow); min-width:min(100%,430px);
+}
+.plaque div{padding:9px 13px; border-right:1px solid var(--rule-soft)}
+.plaque div:last-child{border-right:0}
+.plaque dt{
+  font-size:9.5px; letter-spacing:.14em; text-transform:uppercase;
+  color:var(--muted); margin:0 0 3px;
+}
+.plaque dd{
+  margin:0; font-family:"IBM Plex Mono",ui-monospace,monospace;
+  font-size:15px; font-variant-numeric:tabular-nums; color:var(--ink);
+}
+.plaque dd small{font-size:10px; color:var(--muted); font-family:"IBM Plex Sans",sans-serif}
+
+/* ── Rouleau ──────────────────────────────────────────────────── */
+.roll-shell{position:relative; border:1px solid var(--rule); border-radius:4px; background:var(--roll-bg); overflow:hidden; box-shadow:var(--shadow)}
+#roll{display:block; width:100%; height:320px; touch-action:none; cursor:crosshair}
+.roll-legend{
+  position:absolute; left:12px; top:10px; display:flex; gap:8px; flex-wrap:wrap;
+  pointer-events:none; font-size:11px;
+}
+.chip{
+  display:inline-flex; align-items:center; gap:6px; padding:3px 9px 3px 7px;
+  background:color-mix(in srgb, var(--panel) 86%, transparent);
+  border:1px solid var(--rule); border-radius:2px; color:var(--ink-soft);
+  backdrop-filter:blur(3px);
+}
+.chip i{width:8px; height:8px; border-radius:1px; display:block}
+.now-label{
+  position:absolute; right:12px; top:10px; font-family:"IBM Plex Mono",monospace;
+  font-size:12px; color:var(--muted); pointer-events:none;
+  background:color-mix(in srgb, var(--panel) 86%, transparent);
+  border:1px solid var(--rule); border-radius:2px; padding:3px 8px;
+}
+
+/* ── Transport ────────────────────────────────────────────────── */
+.transport{display:flex; align-items:center; gap:14px; flex-wrap:wrap}
+button{
+  font:inherit; color:var(--ink); background:var(--panel); border:1px solid var(--rule);
+  border-radius:3px; padding:8px 14px; cursor:pointer; transition:background .12s, border-color .12s;
+}
+button:hover{background:var(--panel-2); border-color:var(--brass)}
+button:focus-visible, [tabindex]:focus-visible{outline:2px solid var(--brass); outline-offset:2px}
+button.primary{
+  background:var(--brass); border-color:var(--brass); color:var(--ground);
+  font-weight:600; min-width:118px;
+}
+button.primary:hover{background:var(--brass-bright); border-color:var(--brass-bright)}
+.scrub-shell{flex:1 1 260px; min-width:220px}
+#scrub{display:block; width:100%; height:38px; cursor:pointer; border:1px solid var(--rule); border-radius:3px; background:var(--panel)}
+.time{font-family:"IBM Plex Mono",monospace; font-variant-numeric:tabular-nums; color:var(--ink-soft); font-size:13px; white-space:nowrap}
+.slider{display:flex; align-items:center; gap:8px; font-size:11px; color:var(--muted); letter-spacing:.08em; text-transform:uppercase}
+.slider input[type=range]{width:88px; accent-color:var(--brass)}
+
+/* ── Panneaux ─────────────────────────────────────────────────── */
+.panels{display:grid; grid-template-columns:minmax(0,1.15fr) minmax(0,1fr); gap:18px}
+@media (max-width:900px){.panels{grid-template-columns:1fr}}
+section.panel{border:1px solid var(--rule); border-radius:4px; background:var(--panel); padding:15px 16px 17px; box-shadow:var(--shadow)}
+.panel h2{
+  font-family:Marcellus,serif; font-weight:400; font-size:17px; margin:0 0 3px;
+  letter-spacing:.02em;
+}
+.panel .hint{margin:0 0 14px; color:var(--muted); font-size:12px}
+
+/* Tirants de jeux : la face gravée d'un bouton de registre */
+.stops{display:grid; grid-template-columns:repeat(auto-fill,minmax(132px,1fr)); gap:11px}
+.stop{
+  position:relative; text-align:center; padding:11px 9px 10px; cursor:pointer;
+  background:var(--panel-2); border:1px solid var(--rule); border-radius:3px;
+  transition:transform .14s ease, box-shadow .14s ease, border-color .14s;
+  display:flex; flex-direction:column; gap:5px; align-items:center;
+}
+.stop:hover{border-color:var(--brass)}
+.stop .disc{
+  width:36px; height:36px; border-radius:50%; border:2px solid var(--rule);
+  background:radial-gradient(circle at 34% 30%, var(--key-white), var(--panel-2));
+  display:grid; place-items:center; font-family:"IBM Plex Mono",monospace;
+  font-size:13px; color:var(--ink-soft); transition:border-color .14s, box-shadow .14s;
+}
+.stop .name{font-family:Marcellus,serif; font-size:12.5px; line-height:1.25; letter-spacing:.02em}
+.stop .ranks{font-family:"IBM Plex Mono",monospace; font-size:10px; color:var(--muted); line-height:1.35}
+.stop[aria-pressed="true"]{
+  transform:translateY(-3px); border-color:var(--brass);
+  box-shadow:0 4px 0 -1px var(--brass), var(--shadow);
+}
+.stop[aria-pressed="true"] .disc{border-color:var(--brass); box-shadow:0 0 0 3px color-mix(in srgb,var(--brass) 22%, transparent)}
+.stop .bar{
+  position:absolute; left:0; right:0; bottom:0; height:3px; border-radius:0 0 2px 2px;
+  background:var(--fam,var(--tin));
+}
+
+/* Tirants harmoniques */
+.harm{display:flex; align-items:flex-end; gap:1px; height:176px; touch-action:none; margin-bottom:6px}
+.harm .col{flex:1 1 0; display:flex; flex-direction:column; justify-content:flex-end; height:100%; cursor:ns-resize; position:relative}
+.harm .col span{display:block; background:var(--tin); border-radius:1px 1px 0 0; transition:height .08s linear}
+.harm .col.rank span{background:var(--brass)}
+.harm .col::after{
+  content:attr(data-label); position:absolute; bottom:-15px; left:50%; transform:translateX(-50%);
+  font-family:"IBM Plex Mono",monospace; font-size:8px; color:var(--muted); white-space:nowrap; letter-spacing:-.03em;
+}
+.harm-axis{display:flex; justify-content:space-between; align-items:center; gap:12px; margin-top:19px; font-size:11px; color:var(--muted)}
+.card{margin-top:15px; border-top:1px solid var(--rule-soft); padding-top:13px; display:grid; grid-template-columns:repeat(auto-fit,minmax(104px,1fr)); gap:11px 16px}
+.card dt{font-size:9.5px; letter-spacing:.13em; text-transform:uppercase; color:var(--muted); margin:0 0 2px}
+.card dd{margin:0; font-family:"IBM Plex Mono",monospace; font-size:13px; color:var(--ink); font-variant-numeric:tabular-nums}
+.card dd small{color:var(--muted); font-size:10px; font-family:"IBM Plex Sans",sans-serif}
+.readout{
+  font-family:"IBM Plex Mono",monospace; font-size:12px; color:var(--ink-soft);
+  font-variant-numeric:tabular-nums;
+}
+
+/* ── Clavier ──────────────────────────────────────────────────── */
+.kbd-shell{border:1px solid var(--rule); border-radius:4px; background:var(--panel); padding:14px 16px 16px; box-shadow:var(--shadow)}
+.kbd-head{display:flex; align-items:baseline; gap:14px; flex-wrap:wrap; margin-bottom:12px}
+.kbd-head h2{font-family:Marcellus,serif; font-weight:400; font-size:17px; margin:0}
+.kbd-head p{margin:0; color:var(--muted); font-size:12px}
+.keys{position:relative; height:120px; user-select:none; touch-action:none}
+.key{position:absolute; top:0; border-radius:0 0 3px 3px; cursor:pointer}
+.key.white{
+  background:linear-gradient(180deg,var(--key-white),color-mix(in srgb,var(--key-white) 88%, var(--rule)));
+  border:1px solid var(--key-white-edge); height:100%; z-index:1;
+}
+.key.black{
+  background:linear-gradient(180deg,color-mix(in srgb,var(--key-black) 82%, #fff 6%),var(--key-black));
+  border:1px solid var(--key-black); height:62%; z-index:2;
+}
+.key.on{background:var(--brass); border-color:var(--brass-bright)}
+.key .lbl{
+  position:absolute; bottom:5px; left:0; right:0; text-align:center;
+  font-family:"IBM Plex Mono",monospace; font-size:9px; color:var(--muted); pointer-events:none;
+}
+.key.black .lbl{color:color-mix(in srgb,var(--key-white) 65%, transparent); bottom:4px}
+.key.on .lbl{color:var(--ground)}
+
+footer{color:var(--muted); font-size:12px; border-top:1px solid var(--rule); padding-top:14px; display:flex; gap:18px; flex-wrap:wrap; justify-content:space-between}
+footer a{color:var(--tin)}
+.err{border:1px solid var(--f-reed); background:var(--panel); padding:14px 16px; border-radius:4px}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<div class="wrap" id="app"></div>
+
+<script>
+(function () {
+"use strict";
+
+/* ═══════════════════════════════════════════════════════════════════
+   Console de l'orgue relevé
+   Les notes, les profils harmoniques, le diapason et la réverbération
+   proviennent tous de l'analyse de l'enregistrement (voir analysis/).
+   ═══════════════════════════════════════════════════════════════════ */
+
+const SANDBOXED = (function () { try { return window.self !== window.top; } catch (e) { return true; } })();
+const NOTE_NAMES = ["Do", "Do♯", "Ré", "Ré♯", "Mi", "Fa", "Fa♯", "Sol", "Sol♯", "La", "La♯", "Si"];
+const FAMILY_LABEL = {
+  flute: "Flûtes", principal: "Principaux", mixture: "Fournitures",
+  reed: "Anches", cornet: "Cornet", nazard: "Mutations"
+};
+const RANK_RATIOS = { 0.5: "16′", 1: "8′", 2: "4′", 3: "2⅔′", 4: "2′", 5: "1⅗′", 6: "1⅓′", 8: "1′" };
+
+const KEYMAP = { q: 0, a: 0, z: 1, w: 1, s: 2, e: 3, d: 4, f: 5, t: 6, g: 7, y: 8, h: 9, u: 10, j: 11, k: 12, o: 13, l: 14, p: 15, m: 16 };
+const KEY_LABEL = {}; for (const k in KEYMAP) if (!(KEYMAP[k] in KEY_LABEL)) KEY_LABEL[KEYMAP[k]] = k.toUpperCase();
+
+const LOW = 36, HIGH = 96;                       // étendue du clavier : 61 notes, comme un vrai manuel
+const isBlack = p => [1, 3, 6, 8, 10].includes(((p % 12) + 12) % 12);
+const noteName = p => NOTE_NAMES[((p % 12) + 12) % 12] + (Math.floor(p / 12) - 1);
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const fmtTime = t => {
+  t = Math.max(0, t);
+  return Math.floor(t / 60) + ":" + String(Math.floor(t % 60)).padStart(2, "0");
+};
+
+/* ── Données ─────────────────────────────────────────────────────── */
+let DATA = null;
+
+async function loadData() {
+  if (window.ORGUE_DATA) return window.ORGUE_DATA;
+  const res = await fetch("data/orgue.json");
+  if (!res.ok) throw new Error("réponse " + res.status);
+  return res.json();
+}
+
+/* ── État ────────────────────────────────────────────────────────── */
+const state = {
+  playing: false, pos: 0, rate: 1, volume: 0.75, wet: 0.4,
+  manualReg: 0, follow: true, currentReg: 0, octave: 3,
+  profiles: [], voices: new Map(), held: new Set()
+};
+
+/* ═══ Moteur sonore ══════════════════════════════════════════════ */
+const audio = {
+  ctx: null, master: null, dry: null, wetGain: null, conv: null, noise: null,
+  waves: [], voices: new Set(),
+
+  init() {
+    if (this.ctx) return;
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    this.ctx = new Ctx();
+    const c = this.ctx;
+
+    this.master = c.createGain();
+    this.master.gain.value = state.volume;
+
+    const comp = c.createDynamicsCompressor();
+    comp.threshold.value = -14; comp.knee.value = 26;
+    comp.ratio.value = 3.2; comp.attack.value = 0.006; comp.release.value = 0.22;
+
+    this.conv = c.createConvolver();
+    this.conv.buffer = this.impulse(DATA.rt60 || 2.5);
+    this.wetGain = c.createGain(); this.wetGain.gain.value = state.wet;
+    this.dry = c.createGain(); this.dry.gain.value = 1 - state.wet * 0.45;
+
+    this.bus = c.createGain();
+    this.bus.connect(this.dry).connect(comp);
+    this.bus.connect(this.conv).connect(this.wetGain).connect(comp);
+    comp.connect(this.master).connect(c.destination);
+
+    // bruit court réutilisé pour l'attaque des tuyaux
+    const n = c.createBuffer(1, c.sampleRate * 0.5, c.sampleRate);
+    const d = n.getChannelData(0);
+    for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+    this.noise = n;
+  },
+
+  /* Réponse impulsionnelle : bruit décroissant, amorti dans l'aigu, avec
+     quelques réflexions précoces — l'acoustique mesurée sur l'enregistrement. */
+  impulse(rt60) {
+    const c = this.ctx, sr = c.sampleRate;
+    const len = Math.floor(sr * clamp(rt60, 0.6, 6) * 1.05);
+    const buf = c.createBuffer(2, len, sr);
+    for (let ch = 0; ch < 2; ch++) {
+      const d = buf.getChannelData(ch);
+      let lp = 0;
+      for (let i = 0; i < len; i++) {
+        const t = i / sr;
+        const decay = Math.pow(10, (-60 * t / rt60) / 20);
+        const a = 0.15 + 0.75 * Math.min(1, t / 0.05);        // montée de la salle
+        lp += ((Math.random() * 2 - 1) - lp) * (0.72 - 0.45 * Math.min(1, t / rt60));
+        d[i] = lp * decay * a;
+      }
+      // réflexions précoces : donnent la taille du vaisseau
+      [0.017, 0.029, 0.041, 0.063, 0.088].forEach((dt, k) => {
+        const i = Math.floor(dt * sr * (1 + ch * 0.11));
+        if (i < len) d[i] += (k % 2 ? -1 : 1) * 0.42 / (k + 1);
+      });
+    }
+    return buf;
+  },
+
+  /* Onde périodique bâtie sur f0/2 : les rapports demi-entiers du profil
+     relevé (16′ et ses harmoniques) deviennent des rangs entiers exacts. */
+  wave(reg) {
+    if (this.waves[reg]) return this.waves[reg];
+    const prof = state.profiles[reg];
+    const n = prof.length + 1;
+    const real = new Float32Array(n), imag = new Float32Array(n);
+    for (let k = 1; k < n; k++) imag[k] = prof[k - 1];
+    this.waves[reg] = this.ctx.createPeriodicWave(real, imag, { disableNormalization: true });
+    return this.waves[reg];
+  },
+
+  invalidate(reg) {
+    this.waves[reg] = null;
+    const w = this.wave(reg);
+    this.voices.forEach(v => { if (v.reg === reg && v.osc) { try { v.osc.setPeriodicWave(w); } catch (e) { } } });
+  },
+
+  gainFor(reg) {
+    const p = state.profiles[reg];
+    let s = 0; for (let i = 0; i < p.length; i++) s += p[i];
+    return 0.34 / Math.max(0.5, Math.sqrt(s * 1.6));
+  },
+
+  freq(pitch) {
+    return 440 * Math.pow(2, (pitch - 69) / 12) * Math.pow(2, (DATA.tuningCents || 0) / 1200);
+  },
+
+  start(pitch, velocity, reg, when, duration) {
+    this.init();
+    const c = this.ctx;
+    when = Math.max(when, c.currentTime);
+    const r = DATA.registrations[reg] || DATA.registrations[0];
+    const f0 = this.freq(pitch);
+    const atk = clamp(r.attack || 0.04, 0.006, 0.16);
+    const rel = clamp(r.release || 0.12, 0.02, 0.4);
+    const peak = this.gainFor(reg) * Math.pow(clamp(velocity, 1, 127) / 127, 1.7);
+
+    const osc = c.createOscillator();
+    osc.setPeriodicWave(this.wave(reg));
+    osc.frequency.value = f0 / 2;                        // cf. wave()
+    osc.detune.value = (Math.random() * 2 - 1) * 3.2;    // aucun tuyau n'est parfaitement juste
+    // le tuyau « parle » légèrement bas avant de se fixer
+    osc.detune.setValueAtTime(osc.detune.value - 16, when);
+    osc.detune.linearRampToValueAtTime(osc.detune.value, when + atk * 1.4);
+
+    const g = c.createGain();
+    g.gain.setValueAtTime(0.0001, when);
+    g.gain.linearRampToValueAtTime(peak * 1.07, when + atk * 0.75);
+    g.gain.linearRampToValueAtTime(peak, when + atk * 1.5);
+
+    const pan = c.createStereoPanner ? c.createStereoPanner() : null;
+    if (pan) pan.pan.value = clamp((pitch - 62) / 46, -0.42, 0.42);
+
+    osc.connect(g);
+    (pan ? g.connect(pan).connect(this.bus) : g.connect(this.bus));
+    osc.start(when);
+
+    // souffle d'attaque du tuyau
+    if (state.chiff !== false) {
+      const src = c.createBufferSource(); src.buffer = this.noise;
+      const bp = c.createBiquadFilter(); bp.type = "bandpass";
+      bp.frequency.value = clamp(f0 * 2.4, 90, 9000); bp.Q.value = 1.6;
+      const ng = c.createGain();
+      const lvl = peak * (r.family === "flute" ? 0.30 : r.family === "reed" ? 0.16 : 0.42);
+      ng.gain.setValueAtTime(0.0001, when);
+      ng.gain.linearRampToValueAtTime(lvl, when + 0.006);
+      ng.gain.exponentialRampToValueAtTime(0.0001, when + atk + 0.05);
+      src.connect(bp).connect(ng).connect(this.bus);
+      src.start(when, Math.random() * 0.4); src.stop(when + atk + 0.09);
+    }
+
+    const voice = { osc, g, reg, pitch, rel, stopped: false };
+    this.voices.add(voice);
+    if (duration != null) this.stop(voice, when + Math.max(0.05, duration));
+    return voice;
+  },
+
+  stop(voice, when) {
+    if (!voice || voice.stopped) return;
+    voice.stopped = true;
+    const c = this.ctx;
+    when = Math.max(when, c.currentTime);
+    const rel = voice.rel;
+    try {
+      voice.g.gain.cancelScheduledValues(when);
+      voice.g.gain.setTargetAtTime(0.0001, when, rel / 3.2);
+      voice.osc.stop(when + rel * 3.4);
+    } catch (e) { }
+    voice.osc.onended = () => { this.voices.delete(voice); try { voice.g.disconnect(); } catch (e) { } };
+  },
+
+  panic() {
+    const t = this.ctx ? this.ctx.currentTime : 0;
+    this.voices.forEach(v => this.stop(v, t));
+    state.voices.clear();
+  },
+
+  setWet(v) {
+    if (!this.ctx) return;
+    this.wetGain.gain.value = v;
+    this.dry.gain.value = 1 - v * 0.45;
+  }
+};
+
+/* ═══ Lecture ════════════════════════════════════════════════════ */
+const transport = {
+  idx: 0, anchorCtx: 0, anchorPos: 0, timer: null,
+
+  position() {
+    if (!state.playing) return state.pos;
+    return this.anchorPos + (audio.ctx.currentTime - this.anchorCtx) * state.rate;
+  },
+
+  play() {
+    audio.init();
+    if (audio.ctx.state === "suspended") audio.ctx.resume();
+    if (state.pos >= DATA.duration - 0.1) state.pos = 0;
+    state.playing = true;
+    this.anchorCtx = audio.ctx.currentTime;
+    this.anchorPos = state.pos;
+    this.idx = lowerBound(DATA.notes, state.pos);
+    // les notes déjà commencées sont reprises en cours de route
+    for (let i = 0; i < DATA.notes.length && DATA.notes[i].start < state.pos; i++) {
+      const n = DATA.notes[i];
+      if (n.end > state.pos + 0.08) {
+        audio.start(n.pitch, n.velocity, n.reg, audio.ctx.currentTime, (n.end - state.pos) / state.rate);
+      }
+    }
+    this.timer = setInterval(() => this.tick(), 25);
+    ui.refreshTransport();
+  },
+
+  pause() {
+    state.pos = clamp(this.position(), 0, DATA.duration);
+    state.playing = false;
+    clearInterval(this.timer); this.timer = null;
+    audio.panic();
+    ui.refreshTransport();
+  },
+
+  toggle() { state.playing ? this.pause() : this.play(); },
+
+  seek(t) {
+    const was = state.playing;
+    if (was) this.pause();
+    state.pos = clamp(t, 0, DATA.duration);
+    if (was) this.play(); else ui.refreshTransport();
+  },
+
+  tick() {
+    const pos = this.position();
+    if (pos >= DATA.duration) { this.pause(); state.pos = DATA.duration; ui.refreshTransport(); return; }
+    const horizon = pos + 0.2 * state.rate;
+    const notes = DATA.notes;
+    while (this.idx < notes.length && notes[this.idx].start < horizon) {
+      const n = notes[this.idx++];
+      const when = this.anchorCtx + (n.start - this.anchorPos) / state.rate;
+      if (when > audio.ctx.currentTime - 0.05) {
+        audio.start(n.pitch, n.velocity, n.reg, when, (n.end - n.start) / state.rate);
+      }
+    }
+  }
+};
+
+function lowerBound(notes, t) {
+  let lo = 0, hi = notes.length;
+  while (lo < hi) { const m = (lo + hi) >> 1; if (notes[m].start < t) lo = m + 1; else hi = m; }
+  return lo;
+}
+
+/* ═══ Rouleau ════════════════════════════════════════════════════ */
+const roll = {
+  canvas: null, ctx: null, span: 9, playheadAt: 0.24, lo: 36, hi: 90,
+
+  attach(canvas) {
+    this.canvas = canvas; this.ctx = canvas.getContext("2d");
+    const pitches = DATA.notes.map(n => n.pitch);
+    this.lo = Math.max(21, Math.min.apply(null, pitches) - 2);
+    this.hi = Math.min(108, Math.max.apply(null, pitches) + 2);
+    if (this.hi - this.lo < 30) this.hi = this.lo + 30;
+    this.resize();
+    window.addEventListener("resize", () => this.resize());
+
+    let dragging = false;
+    const toTime = ev => {
+      const r = canvas.getBoundingClientRect();
+      const x = (ev.clientX - r.left) / r.width;
+      return transport.position() + (x - this.playheadAt) * this.span;
+    };
+    canvas.addEventListener("pointerdown", ev => {
+      dragging = true; canvas.setPointerCapture(ev.pointerId); transport.seek(toTime(ev));
+    });
+    canvas.addEventListener("pointermove", ev => { if (dragging) transport.seek(toTime(ev)); });
+    canvas.addEventListener("pointerup", ev => { dragging = false; canvas.releasePointerCapture(ev.pointerId); });
+  },
+
+  resize() {
+    const dpr = window.devicePixelRatio || 1;
+    const r = this.canvas.getBoundingClientRect();
+    this.canvas.width = Math.max(1, Math.round(r.width * dpr));
+    this.canvas.height = Math.max(1, Math.round(r.height * dpr));
+    this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    this.w = r.width; this.h = r.height;
+  },
+
+  draw() {
+    const g = this.ctx, w = this.w, h = this.h;
+    if (!w) return;
+    const C = ui.colors;
+    const pos = transport.position();
+    const t0 = pos - this.playheadAt * this.span;
+    const t1 = t0 + this.span;
+    const rows = this.hi - this.lo + 1;
+    const rh = h / rows;
+    const yOf = p => h - (p - this.lo + 1) * rh;
+    const xOf = t => (t - t0) / this.span * w;
+
+    g.fillStyle = C.rollBg || "#171A20";
+    g.fillRect(0, 0, w, h);
+
+    // portée : une ligne par octave, do repérés
+    g.font = '10px "IBM Plex Mono", monospace';
+    g.textBaseline = "middle";
+    for (let p = this.lo; p <= this.hi; p++) {
+      if (p % 12 !== 0) continue;
+      const y = yOf(p) + rh / 2;
+      g.strokeStyle = C.rollOctave || "#333947";
+      g.lineWidth = 1;
+      g.beginPath(); g.moveTo(0, Math.round(y) + 0.5); g.lineTo(w, Math.round(y) + 0.5); g.stroke();
+      g.fillStyle = C.muted;
+      g.fillText(noteName(p), 5, clamp(y - 7, 8, h - 8));
+    }
+    // touches noires en fond
+    g.fillStyle = C.rollGrid || "#242830";
+    for (let p = this.lo; p <= this.hi; p++) if (isBlack(p)) g.fillRect(0, yOf(p), w, rh);
+
+    // bornes de segments (changements de registration)
+    DATA.segments.forEach(s => {
+      if (s.start < t0 || s.start > t1) return;
+      const x = Math.round(xOf(s.start)) + 0.5;
+      g.strokeStyle = C.rule;
+      g.setLineDash([3, 4]); g.beginPath(); g.moveTo(x, 0); g.lineTo(x, h); g.stroke(); g.setLineDash([]);
+    });
+
+    // notes
+    const notes = DATA.notes;
+    let i = lowerBound(notes, t0 - 30);
+    for (; i < notes.length; i++) {
+      const n = notes[i];
+      if (n.start > t1) break;
+      if (n.end < t0) continue;
+      const x = xOf(n.start), x2 = xOf(n.end);
+      const y = yOf(n.pitch);
+      const on = n.start <= pos && n.end > pos;
+      g.fillStyle = ui.familyColor(DATA.registrations[n.reg].family);
+      g.globalAlpha = on ? 1 : 0.42 + 0.3 * (n.velocity / 127);
+      const bh = Math.max(2, rh - 1.4);
+      g.fillRect(x, y + 0.7, Math.max(2.5, x2 - x), bh);
+      if (on) {
+        g.globalAlpha = 1;
+        g.fillStyle = C.ink;
+        g.fillRect(x, y + 0.7, Math.max(2.5, x2 - x), 1.2);
+      }
+      g.globalAlpha = 1;
+    }
+
+    // tête de lecture
+    const px = Math.round(this.playheadAt * w) + 0.5;
+    g.strokeStyle = C.brass;
+    g.lineWidth = 1.6;
+    g.beginPath(); g.moveTo(px, 0); g.lineTo(px, h); g.stroke();
+  }
+};
+
+/* ═══ Bandeau de navigation : toute la séance en un coup d'œil ══════ */
+const scrub = {
+  attach(canvas) {
+    this.canvas = canvas; this.ctx = canvas.getContext("2d");
+    this.resize(); window.addEventListener("resize", () => { this.resize(); this.cache = null; });
+    let drag = false;
+    const seek = ev => {
+      const r = canvas.getBoundingClientRect();
+      transport.seek((ev.clientX - r.left) / r.width * DATA.duration);
+    };
+    canvas.addEventListener("pointerdown", ev => { drag = true; canvas.setPointerCapture(ev.pointerId); seek(ev); });
+    canvas.addEventListener("pointermove", ev => { if (drag) seek(ev); });
+    canvas.addEventListener("pointerup", ev => { drag = false; canvas.releasePointerCapture(ev.pointerId); });
+  },
+
+  resize() {
+    const dpr = window.devicePixelRatio || 1;
+    const r = this.canvas.getBoundingClientRect();
+    this.canvas.width = Math.max(1, Math.round(r.width * dpr));
+    this.canvas.height = Math.max(1, Math.round(r.height * dpr));
+    this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    this.w = r.width; this.h = r.height;
+  },
+
+  /* Le fond (registrations + densité de notes) ne change jamais : il est
+     rendu une fois hors écran, puis seule la tête de lecture est repeinte. */
+  paint() {
+    const w = this.w, h = this.h;
+    const off = document.createElement("canvas");
+    const dpr = window.devicePixelRatio || 1;
+    off.width = Math.round(w * dpr); off.height = Math.round(h * dpr);
+    const g = off.getContext("2d");
+    g.setTransform(dpr, 0, 0, dpr, 0, 0);
+    g.fillStyle = ui.colors.panel; g.fillRect(0, 0, w, h);
+
+    DATA.segments.forEach(s => {
+      const x = s.start / DATA.duration * w, x2 = s.end / DATA.duration * w;
+      g.fillStyle = ui.familyColor(DATA.registrations[s.registration].family);
+      g.globalAlpha = 0.30; g.fillRect(x, 0, Math.max(1, x2 - x), h); g.globalAlpha = 1;
+    });
+    const bins = Math.max(40, Math.floor(w));
+    const dens = new Float32Array(bins);
+    DATA.notes.forEach(n => { dens[Math.min(bins - 1, Math.floor(n.start / DATA.duration * bins))] += 1; });
+    let mx = 0; for (let i = 0; i < bins; i++) mx = Math.max(mx, dens[i]);
+    g.fillStyle = ui.colors.tin; g.globalAlpha = 0.8;
+    for (let i = 0; i < bins; i++) {
+      if (!dens[i]) continue;
+      const bh = Math.max(1, dens[i] / mx * (h - 8));
+      g.fillRect(i / bins * w, h - bh - 2, Math.max(1, w / bins), bh);
+    }
+    this.cache = off;
+    return off;
+  },
+
+  draw() {
+    const g = this.ctx, w = this.w, h = this.h;
+    if (!w) return;
+    const bg = this.cache && this.cache.width === Math.round(w * (window.devicePixelRatio || 1))
+      ? this.cache : this.paint();
+    g.clearRect(0, 0, w, h);
+    g.drawImage(bg, 0, 0, w, h);
+    const x = transport.position() / DATA.duration * w;
+    g.strokeStyle = ui.colors.brass; g.lineWidth = 2;
+    g.beginPath(); g.moveTo(x, 0); g.lineTo(x, h); g.stroke();
+  }
+};
+
+/* ═══ Interface ══════════════════════════════════════════════════ */
+const ui = {
+  colors: {}, keyEls: {},
+
+  /* Les jetons CSS ne sont relus qu'au démarrage et au changement de thème :
+     les relire par note coûtait un recalcul de style à chaque image. */
+  refreshTheme() {
+    const css = getComputedStyle(document.body);
+    const get = n => css.getPropertyValue(n).trim();
+    this.colors = {
+      ink: get("--ink"), muted: get("--muted"), rule: get("--rule"),
+      brass: get("--brass"), tin: get("--tin"), panel: get("--panel"),
+      rollBg: get("--roll-bg"), rollGrid: get("--roll-grid"), rollOctave: get("--roll-octave")
+    };
+    ["flute", "principal", "mixture", "reed", "cornet", "nazard"].forEach(f => {
+      this.colors["f-" + f] = get("--f-" + f) || this.colors.tin;
+    });
+    if (scrub.cache) scrub.cache = null;
+  },
+
+  familyColor(f) { return this.colors["f-" + f] || this.colors.tin || "#8AA3BB"; },
+
+  build(root) {
+    const R = DATA.registrations;
+    const ambitus = DATA.notes.length
+      ? noteName(Math.min.apply(null, DATA.notes.map(n => n.pitch))) + "–" +
+        noteName(Math.max.apply(null, DATA.notes.map(n => n.pitch)))
+      : "—";
+    const families = [];
+    R.forEach(r => { if (!families.includes(r.family)) families.push(r.family); });
+
+    root.innerHTML = `
+      <header>
+        <div class="title">
+          <h1>Console de l'orgue relevé</h1>
+          <p>Les notes, les timbres, le diapason et l'acoustique de cette console ont été
+             extraits d'un enregistrement de ${fmtTime(DATA.duration)} — une démonstration
+             commentée. Écoutez la transcription, ou jouez l'instrument vous-même.</p>
+        </div>
+        <dl class="plaque">
+          <div><dt>Diapason</dt><dd>${DATA.a4} <small>Hz</small></dd></div>
+          <div><dt>Réverbération</dt><dd>${DATA.rt60} <small>s</small></dd></div>
+          <div><dt>Notes relevées</dt><dd>${DATA.notes.length}</dd></div>
+          <div><dt>Registrations</dt><dd>${R.length}</dd></div>
+          <div><dt>Ambitus</dt><dd>${ambitus}</dd></div>
+        </dl>
+      </header>
+
+      <div class="roll-shell">
+        <canvas id="roll"></canvas>
+        <div class="roll-legend">${families.map(f =>
+          `<span class="chip"><i style="background:${this.familyColor(f)}"></i>${FAMILY_LABEL[f] || f}</span>`).join("")}</div>
+        <div class="now-label" id="nowReg">—</div>
+      </div>
+
+      <div class="transport">
+        <button class="primary" id="play">▶ Écouter</button>
+        <span class="time" id="clock">0:00 / ${fmtTime(DATA.duration)}</span>
+        <div class="scrub-shell"><canvas id="scrub"></canvas></div>
+        <label class="slider">Vitesse <input type="range" id="rate" min="50" max="150" value="100"><span class="readout" id="rateOut">1.00×</span></label>
+        <label class="slider">Nef <input type="range" id="wet" min="0" max="100" value="${Math.round(state.wet * 100)}"></label>
+        <label class="slider">Volume <input type="range" id="vol" min="0" max="100" value="${Math.round(state.volume * 100)}"></label>
+      </div>
+
+      <div class="panels">
+        <section class="panel">
+          <h2>Jeux relevés</h2>
+          <p class="hint">Une registration par timbre distinct trouvé dans l'enregistrement.
+             Tirez-en une pour jouer avec, au clavier ci-dessous.</p>
+          <div class="stops" id="stops"></div>
+          <p class="hint" style="margin:13px 0 0">
+            <label style="display:inline-flex;align-items:center;gap:7px;cursor:pointer">
+              <input type="checkbox" id="follow" checked style="accent-color:var(--brass)">
+              suivre la registration de l'enregistrement pendant l'écoute
+            </label>
+          </p>
+        </section>
+
+        <section class="panel">
+          <h2>Composition harmonique</h2>
+          <p class="hint" id="harmHint">Amplitude relevée de chaque partiel. Faites glisser
+             une barre pour modifier le timbre — le son change immédiatement.</p>
+          <div class="harm" id="harm"></div>
+          <div class="harm-axis">
+            <span class="readout" id="harmName">—</span>
+            <button id="resetHarm" style="padding:4px 10px;font-size:12px">Rétablir le relevé</button>
+          </div>
+          <dl class="card" id="regCard"></dl>
+        </section>
+      </div>
+
+      <div class="kbd-shell">
+        <div class="kbd-head">
+          <h2>Clavier</h2>
+          <p>Souris ou doigt sur les touches · rangées <b>QSDFGHJKLM</b> et <b>ZERTYUOP</b> du clavier
+             d'ordinateur · <b>←</b>/<b>→</b> pour changer d'octave · <b>espace</b> pour lire ou arrêter</p>
+          <button id="midiBtn" style="padding:5px 11px;font-size:12px">Clavier MIDI</button>
+          ${SANDBOXED ? "" : '<button id="dlMidi" style="padding:5px 11px;font-size:12px">Exporter le MIDI</button>'}
+        </div>
+        <div style="overflow-x:auto"><div class="keys" id="keys" style="min-width:640px"></div></div>
+      </div>
+
+      <footer>
+        <span>${DATA.musicSeconds ? Math.round(DATA.musicSeconds) + " s joués et " + Math.round(DATA.speechSeconds) + " s parlés séparés automatiquement" : ""} · diapason relevé ${DATA.tuningCents > 0 ? "+" : ""}${DATA.tuningCents} cents</span>
+        <span>Synthèse additive : ${DATA.harmonics.length} partiels par note, profil mesuré sur l'enregistrement</span>
+      </footer>`;
+
+    this.refreshTheme();
+    this.buildStops();
+    this.buildHarm();
+    this.buildKeys();
+    roll.attach(document.getElementById("roll"));
+    scrub.attach(document.getElementById("scrub"));
+    this.wire();
+    this.selectReg(0);
+  },
+
+  buildStops() {
+    const host = document.getElementById("stops");
+    host.innerHTML = DATA.registrations.map((r, i) => `
+      <button class="stop" data-reg="${i}" aria-pressed="false" style="--fam:${this.familyColor(r.family)}">
+        <span class="disc">${i + 1}</span>
+        <span class="name">${r.name}</span>
+        <span class="ranks">${r.stops.join(" · ")}</span>
+        <span class="ranks">${Math.round(r.seconds)} s · attaque ${Math.round(r.attack * 1000)} ms</span>
+        <span class="bar"></span>
+      </button>`).join("");
+    host.querySelectorAll(".stop").forEach(b => {
+      b.addEventListener("click", () => {
+        state.follow = false;
+        document.getElementById("follow").checked = false;
+        this.selectReg(+b.dataset.reg);
+      });
+    });
+  },
+
+  buildHarm() {
+    const host = document.getElementById("harm");
+    host.innerHTML = DATA.harmonics.map((h, i) => {
+      const rank = RANK_RATIOS[h];
+      return `<div class="col${rank ? " rank" : ""}" data-i="${i}" data-label="${rank || ""}"><span></span></div>`;
+    }).join("");
+    const set = ev => {
+      const r = host.getBoundingClientRect();
+      const cols = host.children;
+      const idx = clamp(Math.floor((ev.clientX - r.left) / r.width * cols.length), 0, cols.length - 1);
+      const v = clamp(1 - (ev.clientY - r.top) / r.height, 0, 1);
+      state.profiles[state.manualReg][idx] = v * v;   // course perceptive
+      audio.invalidate(state.manualReg);
+      this.paintHarm();
+    };
+    let drag = false;
+    host.addEventListener("pointerdown", ev => { drag = true; host.setPointerCapture(ev.pointerId); set(ev); });
+    host.addEventListener("pointermove", ev => { if (drag) set(ev); });
+    host.addEventListener("pointerup", ev => { drag = false; host.releasePointerCapture(ev.pointerId); });
+  },
+
+  paintHarm() {
+    const prof = state.profiles[state.manualReg];
+    const cols = document.getElementById("harm").children;
+    for (let i = 0; i < cols.length; i++) {
+      cols[i].firstElementChild.style.height = (Math.sqrt(clamp(prof[i], 0, 1)) * 100).toFixed(1) + "%";
+    }
+  },
+
+  buildKeys() {
+    const host = document.getElementById("keys");
+    let whites = 0;
+    for (let p = LOW; p <= HIGH; p++) if (!isBlack(p)) whites++;
+    const W = 100 / whites;
+    let wi = 0, html = "";
+    for (let p = LOW; p <= HIGH; p++) {
+      const base = 12 * (state.octave + 1);
+      const kl = KEY_LABEL[p - base];
+      const lbl = kl ? `<span class="lbl">${kl}</span>` : (p % 12 === 0 ? `<span class="lbl">${noteName(p)}</span>` : "");
+      if (!isBlack(p)) {
+        html += `<div class="key white" data-p="${p}" style="left:${(wi * W).toFixed(4)}%;width:${W.toFixed(4)}%">${lbl}</div>`;
+        wi++;
+      } else {
+        html += `<div class="key black" data-p="${p}" style="left:${(wi * W - W * 0.31).toFixed(4)}%;width:${(W * 0.62).toFixed(4)}%">${lbl}</div>`;
+      }
+    }
+    host.innerHTML = html;
+    this.keyEls = {};
+    host.querySelectorAll(".key").forEach(el => { this.keyEls[el.dataset.p] = el; });
+
+    const at = ev => {
+      const el = document.elementFromPoint(ev.clientX, ev.clientY);
+      return el && el.classList.contains("key") ? +el.dataset.p : null;
+    };
+    let down = false, last = null;
+    host.addEventListener("pointerdown", ev => {
+      down = true; host.setPointerCapture(ev.pointerId);
+      last = at(ev); if (last != null) play.on(last);
+    });
+    host.addEventListener("pointermove", ev => {
+      if (!down) return;
+      const p = at(ev);
+      if (p !== last) { if (last != null) play.off(last); last = p; if (p != null) play.on(p); }
+    });
+    const up = ev => {
+      if (!down) return;
+      down = false; if (last != null) play.off(last); last = null;
+      try { host.releasePointerCapture(ev.pointerId); } catch (e) { }
+    };
+    host.addEventListener("pointerup", up);
+    host.addEventListener("pointercancel", up);
+  },
+
+  selectReg(i) {
+    state.manualReg = i;
+    document.querySelectorAll(".stop").forEach(b => {
+      b.setAttribute("aria-pressed", String(+b.dataset.reg === i));
+    });
+    const r = DATA.registrations[i];
+    document.getElementById("harmName").textContent = `${r.name} — ${r.stops.join(" · ")}`;
+
+    const notes = DATA.notes.filter(n => n.reg === i);
+    const pitches = notes.map(n => n.pitch);
+    const held = notes.length
+      ? (notes.reduce((a, n) => a + (n.end - n.start), 0) / notes.length) : 0;
+    const card = document.getElementById("regCard");
+    if (card) card.innerHTML = `
+      <div><dt>Famille</dt><dd>${FAMILY_LABEL[r.family] || r.family}</dd></div>
+      <div><dt>Attaque</dt><dd>${Math.round(r.attack * 1000)} <small>ms</small></dd></div>
+      <div><dt>Relâche</dt><dd>${Math.round(r.release * 1000)} <small>ms</small></dd></div>
+      <div><dt>Brillance</dt><dd>${r.brightness.toFixed(1)} <small>partiel moyen</small></dd></div>
+      <div><dt>Présence</dt><dd>${Math.round(r.seconds)} <small>s · ${notes.length} notes</small></dd></div>
+      <div><dt>Ambitus</dt><dd>${pitches.length ? noteName(Math.min.apply(null, pitches)) + "–" + noteName(Math.max.apply(null, pitches)) : "—"}</dd></div>
+      <div><dt>Durée moyenne</dt><dd>${held.toFixed(2)} <small>s</small></dd></div>`;
+    this.paintHarm();
+  },
+
+  refreshTransport() {
+    const b = document.getElementById("play");
+    b.textContent = state.playing ? "⏸ Pause" : "▶ Écouter";
+  },
+
+  wire() {
+    document.getElementById("play").addEventListener("click", () => transport.toggle());
+    document.getElementById("rate").addEventListener("input", e => {
+      const was = state.playing; if (was) transport.pause();
+      state.rate = +e.target.value / 100;
+      document.getElementById("rateOut").textContent = state.rate.toFixed(2) + "×";
+      if (was) transport.play();
+    });
+    document.getElementById("wet").addEventListener("input", e => {
+      state.wet = +e.target.value / 100; audio.setWet(state.wet);
+    });
+    document.getElementById("vol").addEventListener("input", e => {
+      state.volume = +e.target.value / 100;
+      if (audio.master) audio.master.gain.value = state.volume;
+    });
+    document.getElementById("follow").addEventListener("change", e => { state.follow = e.target.checked; });
+    document.getElementById("resetHarm").addEventListener("click", () => {
+      state.profiles[state.manualReg] = Float32Array.from(DATA.registrations[state.manualReg].profile);
+      audio.invalidate(state.manualReg); this.paintHarm();
+    });
+    document.getElementById("midiBtn").addEventListener("click", connectMidi);
+    const dl = document.getElementById("dlMidi");
+    if (dl) dl.addEventListener("click", downloadMidi);
+
+    document.addEventListener("keydown", ev => {
+      if (ev.target.matches("input,textarea")) return;
+      if (ev.code === "Space") { ev.preventDefault(); transport.toggle(); return; }
+      if (ev.key === "ArrowLeft") { state.octave = clamp(state.octave - 1, 1, 6); this.buildKeys(); return; }
+      if (ev.key === "ArrowRight") { state.octave = clamp(state.octave + 1, 1, 6); this.buildKeys(); return; }
+      const k = ev.key.toLowerCase();
+      if (!(k in KEYMAP) || ev.repeat || ev.metaKey || ev.ctrlKey) return;
+      ev.preventDefault();
+      play.on(12 * (state.octave + 1) + KEYMAP[k]);
+    });
+    document.addEventListener("keyup", ev => {
+      const k = ev.key.toLowerCase();
+      if (k in KEYMAP) play.off(12 * (state.octave + 1) + KEYMAP[k]);
+    });
+    window.addEventListener("blur", () => { state.held.forEach(p => play.off(p)); });
+  }
+};
+
+/* ═══ Jeu manuel ═════════════════════════════════════════════════ */
+const play = {
+  on(pitch, velocity) {
+    if (state.voices.has(pitch)) return;
+    audio.init();
+    if (audio.ctx.state === "suspended") audio.ctx.resume();
+    const v = audio.start(pitch, velocity || 100, state.manualReg, audio.ctx.currentTime, null);
+    state.voices.set(pitch, v); state.held.add(pitch);
+    const el = ui.keyEls[pitch];
+    if (el) el.classList.add("on");
+  },
+  off(pitch) {
+    const v = state.voices.get(pitch);
+    if (v) { audio.stop(v, audio.ctx.currentTime); state.voices.delete(pitch); }
+    state.held.delete(pitch);
+    const el = ui.keyEls[pitch];
+    if (el) el.classList.remove("on");
+  }
+};
+
+function connectMidi() {
+  const btn = document.getElementById("midiBtn");
+  if (!navigator.requestMIDIAccess) { btn.textContent = "MIDI indisponible"; btn.disabled = true; return; }
+  navigator.requestMIDIAccess().then(access => {
+    let n = 0;
+    access.inputs.forEach(inp => {
+      n++;
+      inp.onmidimessage = m => {
+        const [st, d1, d2] = m.data;
+        if ((st & 0xf0) === 0x90 && d2 > 0) play.on(d1, d2);
+        else if ((st & 0xf0) === 0x80 || ((st & 0xf0) === 0x90 && d2 === 0)) play.off(d1);
+      };
+    });
+    btn.textContent = n ? `MIDI : ${n} entrée${n > 1 ? "s" : ""}` : "Aucun clavier MIDI";
+  }).catch(() => { btn.textContent = "MIDI refusé"; });
+}
+
+/* ═══ Export MIDI ════════════════════════════════════════════════ */
+function downloadMidi() {
+  const TICKS = 480, BPM = 100, spt = 60 / BPM / TICKS;
+  const vlq = n => { const o = [n & 0x7f]; n >>= 7; while (n) { o.unshift((n & 0x7f) | 0x80); n >>= 7; } return o; };
+  const str = s => Array.from(new TextEncoder().encode(s));
+  const track = evs => {
+    evs.sort((a, b) => a[0] - b[0]);
+    let prev = 0; const d = [];
+    evs.forEach(([t, p]) => { d.push(...vlq(t - prev), ...p); prev = t; });
+    d.push(0, 0xff, 0x2f, 0x00);
+    return [0x4d, 0x54, 0x72, 0x6b, (d.length >> 24) & 255, (d.length >> 16) & 255, (d.length >> 8) & 255, d.length & 255, ...d];
+  };
+  const tempo = Math.round(6e7 / BPM);
+  const title = str("Orgue relevé").slice(0, 120);
+  const out = [0x4d, 0x54, 0x68, 0x64, 0, 0, 0, 6, 0, 1, 0, DATA.registrations.length + 1, TICKS >> 8, TICKS & 255];
+  out.push(...track([
+    [0, [0xff, 0x51, 3, (tempo >> 16) & 255, (tempo >> 8) & 255, tempo & 255]],
+    [0, [0xff, 0x58, 4, 4, 2, 24, 8]],
+    [0, [0xff, 0x03, title.length].concat(title)]
+  ]));
+  DATA.registrations.forEach((r, ri) => {
+    const ch = ri % 16 === 9 ? (ri + 1) % 16 : ri % 16;
+    const name = str(r.name).slice(0, 120);
+    const evs = [[0, [0xff, 0x03, name.length, ...name]], [0, [0xc0 | ch, r.family === "flute" ? 74 : r.family === "reed" ? 20 : 19]]];
+    DATA.notes.forEach(n => {
+      if (n.reg !== ri) return;
+      const s = Math.round(n.start / spt), e = Math.max(s + 1, Math.round(n.end / spt));
+      evs.push([s, [0x90 | ch, n.pitch, clamp(n.velocity, 1, 127)]], [e, [0x80 | ch, n.pitch, 0]]);
+    });
+    out.push(...track(evs));
+  });
+  const blob = new Blob([new Uint8Array(out)], { type: "audio/midi" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob); a.download = "orgue.mid";
+  document.body.appendChild(a); a.click();
+  setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 2000);
+}
+
+/* ═══ Démarrage ══════════════════════════════════════════════════ */
+function frame() {
+  roll.draw();
+  scrub.draw();
+  const pos = transport.position();
+  const clock = document.getElementById("clock");
+  if (clock) clock.textContent = fmtTime(pos) + " / " + fmtTime(DATA.duration);
+
+  const seg = DATA.segments.find(s => pos >= s.start && pos < s.end);
+  const label = document.getElementById("nowReg");
+  if (label) {
+    label.textContent = seg ? DATA.registrations[seg.registration].name : "silence / commentaire parlé";
+  }
+  if (seg && state.follow && seg.registration !== state.manualReg) ui.selectReg(seg.registration);
+
+  // touches allumées : celles tenues à la main, plus celles de la lecture
+  const lit = new Set(state.held);
+  if (state.playing) {
+    let i = lowerBound(DATA.notes, pos - 20);
+    for (; i < DATA.notes.length && DATA.notes[i].start <= pos; i++) {
+      if (DATA.notes[i].end > pos) lit.add(DATA.notes[i].pitch);
+    }
+  }
+  for (const p in ui.keyEls) ui.keyEls[p].classList.toggle("on", lit.has(+p));
+  requestAnimationFrame(frame);
+}
+
+loadData().then(data => {
+  DATA = data;
+  const segReg = {};
+  DATA.segments.forEach(s => { segReg[s.index] = s.registration; });
+  DATA.notes.forEach(n => { n.reg = segReg[n.section] || 0; });
+  DATA.notes.sort((a, b) => a.start - b.start);
+  state.profiles = DATA.registrations.map(r => Float32Array.from(r.profile));
+  ui.refreshTheme();
+  ui.build(document.getElementById("app"));
+  const mq = window.matchMedia("(prefers-color-scheme: dark)");
+  if (mq.addEventListener) mq.addEventListener("change", () => ui.refreshTheme());
+  requestAnimationFrame(frame);
+}).catch(err => {
+  document.getElementById("app").innerHTML =
+    `<div class="err"><b>Données introuvables.</b> Cette page lit <code>data/orgue.json</code>,
+     produit par <code>analysis/transcribe.py</code>. Ouvrez-la via un serveur local
+     (<code>python3 -m http.server</code> depuis le dossier <code>app/</code>) plutôt qu'en
+     double-cliquant le fichier. <br><small>${String(err)}</small></div>`;
+});
+})();
+</script>
+
+</body>
+</html>
