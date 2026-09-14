@@ -104,6 +104,39 @@ class Ranking(unittest.TestCase):
         self.assertIn("tip", info.describe())
 
 
+class AxisRange(unittest.TestCase):
+    """LogicalMax comes back signed, and sometimes not at all."""
+
+    def test_a_plain_maximum_is_kept(self):
+        self.assertEqual(hid_win.logical_maximum(32767, 16), 32767)
+        self.assertEqual(hid_win.logical_maximum(4095, 16), 4095)
+
+    def test_a_full_16_bit_range_arrives_as_minus_one(self):
+        # 65535 does not fit a signed 32-bit LogicalMax the way Windows
+        # fills it in, so the tablet reports -1 for a full-range axis.
+        self.assertEqual(hid_win.logical_maximum(-1, 16), 65535)
+        self.assertEqual(hid_win.logical_maximum(-1, 8), 255)
+
+    def test_a_missing_maximum_becomes_the_widest_the_field_holds(self):
+        self.assertEqual(hid_win.logical_maximum(0, 16), 65535)
+
+    def test_a_nonsense_bit_size_is_left_alone(self):
+        self.assertEqual(hid_win.logical_maximum(1234, 0), 1234)
+        self.assertEqual(hid_win.logical_maximum(1234, 99), 1234)
+
+    def test_such_an_axis_still_drives_the_full_controller_range(self):
+        from tabletmidi.config import Config
+        from tabletmidi.mapping import Mapper, PenSample
+
+        cfg = Config()
+        cfg.behaviour.smoothing = 0.0
+        limit = hid_win.logical_maximum(-1, 16)
+        mapper = Mapper(cfg, limit, limit)
+        mapper.feed(PenSample(limit, 0, False, True, t=0.0))
+        self.assertEqual(mapper.state.cc_x_value, 127,
+                         "a full-range axis must reach the top of the CC")
+
+
 class PortSelection(unittest.TestCase):
     """Choosing a MIDI port by a name winmm may have truncated."""
 

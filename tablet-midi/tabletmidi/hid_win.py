@@ -410,6 +410,25 @@ def _wide_string(handle, fn) -> str:
     return ""
 
 
+def logical_maximum(logical_max: int, bit_size: int) -> int:
+    """The real upper bound of an axis, past two descriptor quirks.
+
+    ``HidP_GetValueCaps`` hands back a signed 32-bit LogicalMax, so a tablet
+    declaring the full range of a 16-bit field reports -1 rather than 65535.
+    Taken at face value that leaves an axis with no extent, and the tablet
+    looks dead. A descriptor that declares no maximum at all gets the widest
+    value its field can hold.
+    """
+    if bit_size <= 0 or bit_size > 32:
+        return logical_max
+    span = (1 << bit_size) - 1
+    if logical_max < 0:
+        return logical_max & span
+    if logical_max == 0:
+        return span
+    return logical_max
+
+
 def _find_axis(value_caps, page: int, usage: int) -> Optional[AxisInfo]:
     for cap in value_caps:
         if cap.UsagePage != page:
@@ -419,7 +438,10 @@ def _find_axis(value_caps, page: int, usage: int) -> Optional[AxisInfo]:
                 continue
         elif cap.u.NotRange.Usage != usage:
             continue
-        return AxisInfo(page, usage, cap.LogicalMin, cap.LogicalMax, cap.BitSize)
+        return AxisInfo(
+            page, usage, max(cap.LogicalMin, 0),
+            logical_maximum(cap.LogicalMax, cap.BitSize), cap.BitSize,
+        )
     return None
 
 
