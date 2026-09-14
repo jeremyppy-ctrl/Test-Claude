@@ -345,6 +345,8 @@ class DeviceInfo:
     buttons: List[Tuple[int, int]] = field(default_factory=list)
     readable: bool = False
     note: str = ""
+    #: How many top-level collections the same USB device exposes.
+    collections: int = 1
 
     @property
     def has_pen(self) -> bool:
@@ -585,6 +587,36 @@ def enumerate_devices(only_pens: bool = False) -> List[DeviceInfo]:
 
     found.sort(key=lambda d: d.score(), reverse=True)
     return found
+
+
+def group_by_device(devices: List[DeviceInfo]) -> List[DeviceInfo]:
+    """One entry per physical device, best collection first.
+
+    A tablet turns up several times -- a mouse collection, a digitizer, often
+    a keyboard for the buttons on its frame -- and they are one USB device as
+    far as hiding is concerned. Devices without a pen are kept: a tablet still
+    in its mouse-compatible mode has no digitizer collection to show yet, and
+    it is exactly the one the user needs to pick in order to hide it.
+    """
+    best: Dict[Tuple[int, int], DeviceInfo] = {}
+    order: List[Tuple[int, int]] = []
+    for dev in devices:
+        key = (dev.vid, dev.pid)
+        if key == (0, 0):
+            continue
+        current = best.get(key)
+        if current is None:
+            best[key] = dev
+            dev.collections = 1
+            order.append(key)
+            continue
+        seen = current.collections + 1
+        if dev.score() > current.score():
+            best[key] = dev
+        best[key].collections = seen
+    rows = [best[key] for key in order]
+    rows.sort(key=lambda d: (not d.has_pen, -d.score()))
+    return rows
 
 
 def pick_device(

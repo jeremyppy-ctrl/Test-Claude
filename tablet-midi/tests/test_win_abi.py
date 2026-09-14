@@ -104,6 +104,54 @@ class Ranking(unittest.TestCase):
         self.assertIn("tip", info.describe())
 
 
+class Grouping(unittest.TestCase):
+    """A tablet is several HID collections but one thing to hide."""
+
+    def collection(self, vid, pid, **kwargs):
+        info = hid_win.DeviceInfo(path=kwargs.pop("path", "p"), vid=vid, pid=pid)
+        if kwargs.pop("pen", False):
+            info.x = hid_win.AxisInfo(1, 0x30, 0, kwargs.pop("x_max", 32767), 16)
+            info.y = hid_win.AxisInfo(1, 0x31, 0, 32767, 16)
+        for key, value in kwargs.items():
+            setattr(info, key, value)
+        return info
+
+    def test_collections_of_one_device_collapse_to_one_row(self):
+        rows = hid_win.group_by_device([
+            self.collection(0x256C, 0x006D, path="a", pen=True, usage_page=0x0D,
+                            buttons=[(0x0D, 0x42)]),
+            self.collection(0x256C, 0x006D, path="b", pen=True, x_max=1023),
+            self.collection(0x256C, 0x006D, path="c"),
+        ])
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0].collections, 3)
+        self.assertEqual(rows[0].path, "a", "the best collection represents it")
+
+    def test_a_device_with_no_pen_is_still_offered(self):
+        # This is the tablet that has not been woken out of mouse mode yet --
+        # refusing to list it would leave no way to hide it.
+        rows = hid_win.group_by_device([self.collection(0x256C, 0x006D)])
+        self.assertEqual(len(rows), 1)
+        self.assertFalse(rows[0].has_pen)
+
+    def test_pens_sort_ahead_of_everything_else(self):
+        rows = hid_win.group_by_device([
+            self.collection(0x046D, 0xC52B, path="mouse"),
+            self.collection(0x256C, 0x006D, path="pen", pen=True,
+                            buttons=[(0x0D, 0x42)]),
+        ])
+        self.assertEqual([d.path for d in rows], ["pen", "mouse"])
+
+    def test_devices_without_a_vendor_id_are_dropped(self):
+        self.assertEqual(hid_win.group_by_device([self.collection(0, 0)]), [])
+
+    def test_distinct_devices_stay_distinct(self):
+        rows = hid_win.group_by_device([
+            self.collection(0x256C, 0x006D), self.collection(0x256C, 0x0064),
+        ])
+        self.assertEqual(len(rows), 2)
+
+
 class AxisRange(unittest.TestCase):
     """LogicalMax comes back signed, and sometimes not at all."""
 

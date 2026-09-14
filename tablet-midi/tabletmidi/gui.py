@@ -601,39 +601,67 @@ class DriverSetup(tk.Toplevel):
         self.text.see("end")
 
     def rescan(self) -> None:
+        """List what is plugged in, and report HidHide separately.
+
+        The device list must not depend on HidHide: you want to see your
+        tablet here *before* installing it, and a tablet still in its
+        mouse-compatible mode may not show a pen until it has been hidden --
+        so every HID device is offered, not just the ones already readable
+        as a pen.
+        """
         self.devices.delete(0, "end")
         self.text.delete("1.0", "end")
-        status = hidhide.status()
-        if not status.installed:
-            self.say("HidHide is not installed.")
-            self.say("Download and install it from " + hidhide.DOWNLOAD_URL)
-            self.app.dot_hide.set(BAD, "Hiding: HidHide missing")
-            return
-        self.say("HidHide: %s" % status.cli_path)
-        self.say(
-            "Administrator: %s" % ("yes" if status.elevated else "no -- needed to change anything")
-        )
-        self.say("Allow-listed program: %s" % hidhide.current_executable())
 
         try:
-            from .hid_win import enumerate_devices
+            from .hid_win import enumerate_devices, group_by_device
 
-            pens = [d for d in enumerate_devices() if d.has_pen]
+            devices = group_by_device(enumerate_devices())
         except Exception as exc:
-            self.say("Could not enumerate tablets: %s" % exc)
-            pens = []
-        self._pens = pens
-        for dev in pens:
-            mark = "hidden" if status.hides(dev.vid, dev.pid) else "visible"
-            self.devices.insert("end", "[%s] %s" % (mark, dev.describe()))
-        if pens:
+            devices = []
+            self.say("Could not list HID devices: %s" % exc)
+
+        self._pens = devices
+        state = hidhide.status()
+
+        for dev in self._pens:
+            marks = []
+            if state.installed and state.hides(dev.vid, dev.pid):
+                marks.append("hidden")
+            marks.append("pen" if dev.has_pen else "no pen seen")
+            if dev.collections > 1:
+                marks.append("%d collections" % dev.collections)
+            self.devices.insert("end", "[%s] %s" % (", ".join(marks), dev.describe()))
+
+        if self._pens:
             self.devices.selection_set(0)
-            self.app.dot_hide.set(
-                GOOD if status.hides(pens[0].vid, pens[0].pid) else WARN,
-                "Hiding: %s" % ("on" if status.hides(pens[0].vid, pens[0].pid) else "off"),
-            )
         else:
-            self.say("No tablet with a pen was found.")
+            self.say("No HID device was found at all -- is the tablet plugged in?")
+
+        self.say("")
+        if not state.installed:
+            if state.driver_present:
+                self.say("HidHide's driver is installed but HidHideCLI.exe was not found.")
+                self.say("Reinstall HidHide, or set HIDHIDE_CLI to its full path.")
+            else:
+                self.say("HidHide is not installed, so nothing can be hidden yet.")
+                self.say("Install it from " + hidhide.DOWNLOAD_URL + " and reboot.")
+            self.say("The devices above are still listed, so you can check the")
+            self.say("tablet is seen before installing anything.")
+            self.app.dot_hide.set(BAD, "Hiding: HidHide not installed")
+            return
+
+        self.say("HidHide: %s" % state.cli_path)
+        self.say("Administrator: %s"
+                 % ("yes" if state.elevated else "no -- needed to change anything"))
+        self.say("Allow-listed program: %s" % hidhide.current_executable())
+        if not state.allows(hidhide.current_executable()):
+            self.say("  ...which is NOT on the allow list yet; Hide tablet adds it.")
+
+        pick = self._pens[0] if self._pens else None
+        hiding = bool(pick and state.hides(pick.vid, pick.pid))
+        self.app.dot_hide.set(
+            GOOD if hiding else WARN, "Hiding: %s" % ("on" if hiding else "off")
+        )
 
     def _selected(self):
         picks = self.devices.curselection()
@@ -655,6 +683,14 @@ class DriverSetup(tk.Toplevel):
     def apply(self, preview: bool) -> None:
         dev = self._selected()
         if dev is None:
+            return
+        if not hidhide.find_cli():
+            messagebox.showinfo(
+                "HidHide needed",
+                "HidHide is what hides the tablet from Windows, and it is not "
+                "installed.\n\nInstall it from:\n" + hidhide.DOWNLOAD_URL
+                + "\n\nReboot afterwards, then come back here.",
+            )
             return
         paths = self._paths(dev)
         if not paths:

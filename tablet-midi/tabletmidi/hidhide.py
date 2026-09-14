@@ -21,10 +21,17 @@ from typing import List, Optional
 
 DOWNLOAD_URL = "https://github.com/nefarius/HidHide/releases"
 
+# HidHide has moved its CLI between releases -- sometimes under an x64
+# subfolder, sometimes directly in the install directory, and the vendor
+# folder has been spelled several ways. Search widely, but stay inside the
+# vendor's own directories so this never walks all of Program Files.
+_CLI_NAME = "HidHideCLI.exe"
 _CLI_GLOBS = (
     r"C:\Program Files\Nefarius Software Solutions*\HidHide\x64\HidHideCLI.exe",
     r"C:\Program Files\Nefarius Software Solutions*\HidHide\x86\HidHideCLI.exe",
-    r"C:\Program Files (x86)\Nefarius Software Solutions*\HidHide\*\HidHideCLI.exe",
+    r"C:\Program Files\Nefarius Software Solutions*\HidHide\HidHideCLI.exe",
+    r"C:\Program Files\Nefarius*\**\HidHideCLI.exe",
+    r"C:\Program Files (x86)\Nefarius*\**\HidHideCLI.exe",
 )
 
 
@@ -48,6 +55,8 @@ class Step:
 @dataclass
 class Status:
     installed: bool = False
+    #: The filter driver is present even when the CLI cannot be located.
+    driver_present: bool = False
     cli_path: str = ""
     elevated: bool = False
     cloaking: bool = False
@@ -73,17 +82,82 @@ def _normalise_exe(path: str) -> str:
     return (path or "").strip().strip('"').replace("/", "\\").rstrip("\\").lower()
 
 
+def _registry_install_locations() -> List[str]:
+    """Where the uninstall entries say HidHide put itself."""
+    if sys.platform != "win32":
+        return []
+    import winreg
+
+    found: List[str] = []
+    roots = (
+        (winreg.HKEY_LOCAL_MACHINE,
+         r"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall"),
+        (winreg.HKEY_LOCAL_MACHINE,
+         r"SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall"),
+    )
+    for root, subkey in roots:
+        try:
+            parent = winreg.OpenKey(root, subkey)
+        except OSError:
+            continue
+        with parent:
+            try:
+                count = winreg.QueryInfoKey(parent)[0]
+            except OSError:
+                continue
+            for index in range(count):
+                try:
+                    with winreg.OpenKey(parent, winreg.EnumKey(parent, index)) as entry:
+                        name = _reg_value(entry, "DisplayName")
+                        if "hidhide" not in (name or "").lower():
+                            continue
+                        location = _reg_value(entry, "InstallLocation")
+                        if location:
+                            found.append(location)
+                except OSError:
+                    continue
+    return found
+
+
+def _reg_value(key, name: str) -> str:
+    import winreg
+
+    try:
+        value, _ = winreg.QueryValueEx(key, name)
+    except OSError:
+        return ""
+    return value if isinstance(value, str) else ""
+
+
+def driver_present() -> bool:
+    """True when the HidHide filter driver is installed, CLI or not."""
+    if sys.platform != "win32":
+        return False
+    root = os.environ.get("SystemRoot", r"C:\Windows")
+    return os.path.exists(os.path.join(root, "System32", "drivers", "HidHide.sys"))
+
+
 def find_cli() -> Optional[str]:
-    """Locate HidHideCLI.exe, or None when HidHide is not installed."""
+    """Locate HidHideCLI.exe, or None when it cannot be found."""
     if sys.platform != "win32":
         return None
     override = os.environ.get("HIDHIDE_CLI")
     if override and os.path.exists(override):
         return override
     for pattern in _CLI_GLOBS:
-        for hit in sorted(glob.glob(pattern), reverse=True):
+        for hit in sorted(glob.glob(pattern, recursive=True), reverse=True):
             if os.path.exists(hit):
                 return hit
+    # The globs assume the default drive; the registry knows the truth.
+    for location in _registry_install_locations():
+        direct = os.path.join(location, _CLI_NAME)
+        if os.path.exists(direct):
+            return direct
+        for hit in sorted(
+            glob.glob(os.path.join(location, "**", _CLI_NAME), recursive=True),
+            reverse=True,
+        ):
+            return hit
     return None
 
 
@@ -220,7 +294,7 @@ def _matches(entry: str, vid: int, pid: int) -> bool:
 
 def status() -> Status:
     """What HidHide currently holds, as far as the CLI will tell us."""
-    st = Status(elevated=is_elevated())
+    st = Status(elevated=is_elevated(), driver_present=driver_present())
     cli = find_cli()
     if not cli:
         return st
