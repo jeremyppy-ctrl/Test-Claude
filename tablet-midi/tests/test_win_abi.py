@@ -1,0 +1,157 @@
+"""The Windows structures must match the SDK byte for byte.
+
+These run on any platform: every field is declared with an explicit width, so
+a mistake shows up here rather than as a mysterious failure on the tablet.
+"""
+
+import os
+import sys
+import unittest
+from ctypes import sizeof
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+
+from tabletmidi import hid_win, midi_win
+
+
+class Sizes(unittest.TestCase):
+    """Sizes taken from hidpi.h, setupapi.h, minwinbase.h and mmeapi.h."""
+
+    def test_hid_structures(self):
+        self.assertEqual(sizeof(hid_win.HIDD_ATTRIBUTES), 12)
+        self.assertEqual(sizeof(hid_win.HIDP_CAPS), 64)
+        self.assertEqual(sizeof(hid_win.HIDP_VALUE_CAPS), 72)
+        self.assertEqual(sizeof(hid_win.HIDP_BUTTON_CAPS), 72)
+
+    def test_setupapi_structures_on_64_bit(self):
+        self.assertEqual(sizeof(hid_win.SP_DEVICE_INTERFACE_DATA), 32)
+        self.assertEqual(sizeof(hid_win.SP_DEVINFO_DATA), 32)
+        self.assertEqual(sizeof(hid_win.OVERLAPPED), 32)
+
+    def test_midi_caps_is_84_bytes(self):
+        # Wide characters are 2 bytes on Windows but 4 elsewhere, so szPname
+        # is declared as raw UTF-16 units to keep this true everywhere.
+        self.assertEqual(sizeof(midi_win.MIDIOUTCAPSW), 84)
+
+    def test_port_name_decodes_from_utf16(self):
+        caps = midi_win.MIDIOUTCAPSW()
+        for index, char in enumerate("loopMIDI Port"):
+            caps.szPname[index] = ord(char)
+        self.assertEqual(caps.name, "loopMIDI Port")
+
+    def test_empty_port_name(self):
+        self.assertEqual(midi_win.MIDIOUTCAPSW().name, "")
+
+
+class StatusCodes(unittest.TestCase):
+    def test_hidp_status_values(self):
+        self.assertEqual(hid_win.HIDP_STATUS_SUCCESS, 0x00110000)
+        self.assertEqual(hid_win.HIDP_STATUS_USAGE_NOT_FOUND & 0xFFFFFFFF, 0xC0110004)
+        self.assertEqual(
+            hid_win.HIDP_STATUS_INCOMPATIBLE_REPORT_ID & 0xFFFFFFFF, 0xC011000A
+        )
+
+
+class Ranking(unittest.TestCase):
+    """The tablet exposes several collections; we must pick the pen."""
+
+    def pen(self, **kwargs):
+        info = hid_win.DeviceInfo(path=kwargs.pop("path", r"\\?\hid#x"))
+        info.x = hid_win.AxisInfo(1, 0x30, 0, kwargs.pop("x_max", 32767), 16)
+        info.y = hid_win.AxisInfo(1, 0x31, 0, kwargs.pop("y_max", 32767), 16)
+        for key, value in kwargs.items():
+            setattr(info, key, value)
+        return info
+
+    def test_a_collection_without_axes_is_not_a_candidate(self):
+        self.assertEqual(hid_win.DeviceInfo(path="x").score(), -1)
+
+    def test_the_digitizer_outranks_the_mouse_collection(self):
+        mouse = self.pen(usage_page=0x01, usage=0x02, x_max=1023, readable=True)
+        digitizer = self.pen(
+            usage_page=0x0D, usage=0x02, readable=True,
+            buttons=[(0x0D, 0x42), (0x0D, 0x32)],
+        )
+        self.assertGreater(digitizer.score(), mouse.score())
+
+    def test_pick_prefers_the_best_and_honours_a_pinned_path(self):
+        mouse = self.pen(path=r"\\?\hid#mouse", usage_page=0x01, x_max=1023)
+        digitizer = self.pen(
+            path=r"\\?\hid#pen", usage_page=0x0D, buttons=[(0x0D, 0x42)]
+        )
+        devices = [mouse, digitizer]
+        self.assertIs(hid_win.pick_device(devices), digitizer)
+        self.assertIs(
+            hid_win.pick_device(devices, path=r"\\?\HID#MOUSE"), mouse,
+            "a pinned path wins, and matches case-insensitively",
+        )
+
+    def test_pick_filters_by_vendor_and_name(self):
+        a = self.pen(path="a", vid=0x256C, pid=0x006D, product="Tablet A")
+        b = self.pen(path="b", vid=0x1234, pid=0x5678, product="Other")
+        self.assertIs(hid_win.pick_device([a, b], vid=0x256C), a)
+        self.assertIs(hid_win.pick_device([a, b], name_hint="other"), b)
+        self.assertIsNone(hid_win.pick_device([a, b], vid=0xFFFF))
+
+    def test_a_name_hint_that_matches_nothing_does_not_empty_the_list(self):
+        a = self.pen(path="a", product="Tablet A")
+        self.assertIs(hid_win.pick_device([a], name_hint="nonesuch"), a)
+
+    def test_flags_read_off_the_button_list(self):
+        info = self.pen(buttons=[(0x0D, 0x42), (0x0D, 0x32)])
+        self.assertTrue(info.has_tip_switch)
+        self.assertTrue(info.has_in_range)
+        self.assertIn("tip", info.describe())
+
+
+class PortSelection(unittest.TestCase):
+    """Choosing a MIDI port by a name winmm may have truncated."""
+
+    PORTS = [
+        midi_win.MidiPort(0, "Microsoft GS Wavetable Synth"),
+        midi_win.MidiPort(1, "loopMIDI Port"),
+        midi_win.MidiPort(2, "Some USB Keyboard"),
+    ]
+
+    def setUp(self):
+        self._real = midi_win.list_ports
+        midi_win.list_ports = lambda: list(self.PORTS)
+
+    def tearDown(self):
+        midi_win.list_ports = self._real
+
+    def test_exact_prefix_and_substring_all_match(self):
+        for name in ("loopMIDI Port", "loopMIDI", "midi port"):
+            self.assertEqual(midi_win.find_port(name).index, 1, name)
+
+    def test_an_empty_name_prefers_a_loopback_port(self):
+        self.assertEqual(midi_win.find_port("").index, 1)
+
+    def test_a_missing_name_is_reported_when_asked(self):
+        self.assertIsNone(midi_win.find_port("nonesuch", fallback=False))
+
+    def test_a_missing_name_substitutes_when_allowed(self):
+        self.assertEqual(midi_win.find_port("nonesuch").index, 1)
+
+    def test_the_wavetable_synth_is_the_last_resort(self):
+        midi_win.list_ports = lambda: [self.PORTS[0], self.PORTS[2]]
+        self.assertEqual(midi_win.find_port("").index, 2)
+        midi_win.list_ports = lambda: [self.PORTS[0]]
+        self.assertIsNone(midi_win.find_port(""), "a synth is nowhere to send")
+
+    def test_no_ports_at_all(self):
+        midi_win.list_ports = lambda: []
+        self.assertIsNone(midi_win.find_port("loopMIDI"))
+
+
+class PlatformGuards(unittest.TestCase):
+    @unittest.skipIf(sys.platform == "win32", "only meaningful off Windows")
+    def test_modules_import_but_refuse_to_run(self):
+        with self.assertRaises(hid_win.HidUnavailable):
+            hid_win.enumerate_devices()
+        with self.assertRaises(midi_win.MidiUnavailable):
+            midi_win.list_ports()
+
+
+if __name__ == "__main__":
+    unittest.main(verbosity=2)

@@ -1,0 +1,62 @@
+name: Tablet MIDI
+
+# Builds TabletMidi.exe on a Windows runner and attaches it to the run, so the
+# executable can be downloaded without a Windows build setup.
+
+on:
+  push:
+    paths:
+      - 'tablet-midi/**'
+      - '.github/workflows/tablet-midi.yml'
+  pull_request:
+    paths:
+      - 'tablet-midi/**'
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: Tests (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      # The package is stdlib-only, so there is nothing to install.
+      - name: Run the test suite
+        working-directory: tablet-midi
+        run: python -m unittest discover -s tests -v
+      - name: Check every module imports
+        working-directory: tablet-midi
+        run: python -c "import tabletmidi.cli, tabletmidi.engine, tabletmidi.hid_win, tabletmidi.midi_win, tabletmidi.hidhide, tabletmidi.gui; print('imports ok')"
+
+  build:
+    name: Build TabletMidi.exe
+    needs: test
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install PyInstaller
+        run: python -m pip install --upgrade pip pyinstaller
+      - name: Build
+        working-directory: tablet-midi
+        run: python build_exe.py
+      - name: Smoke-test the executable
+        working-directory: tablet-midi
+        # A frozen windowed build still answers the command line.
+        run: |
+          .\dist\TabletMidi.exe --version
+          .\dist\TabletMidi.exe ports
+        continue-on-error: true
+      - uses: actions/upload-artifact@v4
+        with:
+          name: TabletMidi-exe
+          path: tablet-midi/dist/TabletMidi.exe
+          if-no-files-found: error
